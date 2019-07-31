@@ -28,40 +28,30 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package com.salesforce.op.local
+package com.salesforce.op.stages.impl.feature
 
-import com.salesforce.op.{OpParams, OpWorkflow}
-import org.apache.spark.sql.SparkSession
+import com.salesforce.op.UID
+import com.salesforce.op.features.types._
+import com.salesforce.op.stages.base.unary.UnaryTransformer
 
+import scala.reflect.runtime.universe.TypeTag
 
 /**
- * A class for running TransmogrifAI Workflow without Spark.
+ * TimePeriodMapTransformer extracts one of a set of time periods from a date/datetime list
  *
- * @param workflow the workflow that you want to run (Note: the workflow should have the resultFeatures set)
+ * @param period        time period to extract from date
+ * @param uid           uid for instance
+ * @param tti           type tag for input
+ * @tparam I            input feature type
  */
-class OpWorkflowRunnerLocal(val workflow: OpWorkflow) extends Serializable {
+class TimePeriodListTransformer[I <: DateList]
+(
+  val period: TimePeriod,
+  uid: String = UID[TimePeriodListTransformer[_]]
+)(
+  implicit override val tti: TypeTag[I]
+) extends UnaryTransformer[I, OPVector](operationName = "dateListToTimePeriod", uid = uid) {
 
-  /**
-   * Load the model & prepare a score function for local scoring
-   *
-   * Note: since we use Spark native [[org.apache.spark.ml.util.MLWriter]] interface
-   * to load stages the Spark session is being created internally. So if you would not like
-   * to have an open SparkSession please make sure to stop it after creating the score function:
-   *
-   *   val scoreFunction = new OpWorkflowRunnerLocal(workflow).score(params)
-   *   // stop the session after creating the scoreFunction if needed
-   *   SparkSession.builder().getOrCreate().stop()
-   *
-   * @param params params to use during scoring
-   * @param spark  Spark Session needed for preparing scoring function.
-   *               Once scoring function is returned the Spark Session can be shutdown
-   *               since it's not required during local scoring.
-   * @return score function for local scoring
-   */
-  def scoreFunction(params: OpParams)(implicit spark: SparkSession): ScoreFunction = {
-    require(params.modelLocation.isDefined, "Model location must be set in params")
-    val model = workflow.loadModel(params.modelLocation.get)
-    model.scoreFunction
-  }
-
+  override def transformFn: I => OPVector =
+    (i: I) => i.value.map(t => period.extractIntFromMillis(t).toDouble).toOPVector
 }
